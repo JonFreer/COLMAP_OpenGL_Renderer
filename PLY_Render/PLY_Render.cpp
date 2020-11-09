@@ -27,39 +27,18 @@
 #endif
 using namespace std;
 
-float angleX = 1.8f;
-float angleY = 1.3f;
-float lx = -0.2f, lz = 1.0f, ly = 0.2f;
-
 int width = 1164;
 int height = 765;
-float x = 0;
-float y = 0;
-float z = 0;
-
 
 std::vector<std::array<double, 3>> vPos;
 std::vector<std::array<unsigned char, 3>> vCol;
+
 static GLubyte* pixels = NULL;
-//static png_byte* png_bytes = NULL;
-//static png_byte** png_rows = NULL;
-// the key stat
-
-//es. These variables will be zero
-//when no key is being presses
-
-float deltaX = 0.0f;
-float deltaY = 0.0f;
-
-
-int xOrigin = -1;
-int yOrigin = -1;
-float radius = 70;
 
 //Image Index
-int imageIndex = 0;
-
-
+int imageIndex = 2;
+int passIndex = 0;
+bool loaded = false; //allow render to load for 1 iteration
 //Text Parser
 const int set_size = 100;
 float QW[set_size];
@@ -70,7 +49,6 @@ float TX[set_size];
 float TY[set_size];
 float TZ[set_size];
 string names[set_size];
-
 
 //String helper methods 
 template <typename Out>
@@ -88,22 +66,6 @@ std::vector<std::string> split(const std::string& s, char delim) {
 	return elems;
 }
 
-//static void screenshot_ppm(const char* filename, GLubyte** pixels) {
-//	size_t i, j, cur;
-//	const size_t format_nchannels = 3;
-//	FILE* f = fopen(filename, "w");
-//	fprintf(f, "P3\n%d %d\n%d\n", width, height, 255);
-//	
-//	glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, *pixels);
-//	for (i = 0; i < height; i++) {
-//		for (j = 0; j < width; j++) {
-//			cur = format_nchannels * ((height - i - 1) * width + j);
-//			fprintf(f, "%3d %3d %3d ", (*pixels)[cur], (*pixels)[cur + 1], (*pixels)[cur + 2]);
-//		}
-//		fprintf(f, "\n");
-//	}
-//	fclose(f);
-//}
 
 static png_byte* png_bytes = NULL;
 static png_byte** png_rows = NULL;
@@ -204,19 +166,6 @@ void changeSize(int w, int h) {
 }
 
 
-//void _drawSphere(float x, float y, float z, float rad , char r, char g, char b ) {
-//	glPushMatrix();
-//	glColor3f((float)r/256, (float)g/256, (float)b/256);
-//	glTranslatef(x, y, z);
-//	glPointSize(5.0f);
-//	
-//	
-//	
-//	//glutSolidSphere(rad, 2, 2);
-//
-//	glPopMatrix();
-//}
-
 
 void drawPointCloud() {
 	glPointSize(2.0f);
@@ -228,59 +177,40 @@ void drawPointCloud() {
 	glEnd();
 }
 
+void drawPointCloudDepth(glm::vec3 camPos) {
+	glPointSize(2.0f);
+	
+	glBegin(GL_POINTS);
+	for (std::vector<std::array<double, 3>>::size_type i = 0; i != vPos.size(); i++) {
+		float distance = (float)glm::distance(camPos, glm::vec3(vPos[i][0], vPos[i][1], vPos[i][2]));
+
+		glColor3f(1-(distance / 6), 1-(distance / 6), 1-(distance / 6));
+		glVertex3f(vPos[i][0], vPos[i][1], vPos[i][2]);
+	}
+	glEnd();
+}
+
+
 
 void renderScene(void) {
-	glClearColor(1, 1, 1, 1);
+	//set background color
+	if (passIndex == 0) {
+		glClearColor(1, 1, 1, 1);
+	}
+	else {
+		glClearColor(0, 0, 0, 1);
+	}
+
 	// Clear Color and Depth Buffers
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	// Reset transformations
 	glLoadIdentity();
 	// Set the camera
 
-	/*float a = 1 - 2 * (QY[0] * QY[0]) - 2 * (QZ[0] * QZ[0]);
-	float b = 2 * QX[0] * QY[0] + 2 * QZ[0] * QW[0];
-	float c = 2 * QX[0] * QZ[0] - 2 * QY[0] * QW[0];
-	float d = 2 * QX[0] * QY[0] - 2 * QZ[0] * QW[0];
-	float e = 1 - 2 * (QX[0] * QX[0]) - 2 * (QZ[0] * QZ[0]);
-	float f = 2 * QY[0] * QZ[0] + 2 * QX[0] * QW[0];
-	float g = 2 * QX[0] * QZ[0] + 2 * QY[0] * QW[0];
-	float h = 2 * QY[0] * QZ[0] - 2 * QX[0] * QW[0];
-	float i = 1 - 2 * (QX[0] * QX[0]) - 2 * (QY[0] * QY[0]);
 
-	float determinant = +a * (e * i - h *f)
-		- b * (d * i -f * g)
-		+ c * (d * h - e * g);
-	double invdet = 1 / determinant;
-	float ai = (e * i - h *f) * invdet;
-	float di = -(b * i - c * h) * invdet;
-	float gi = (b *f - c * e) * invdet;
-	float bi = -(d * i -f * g) * invdet;
-	float ei = (i * i - c * g) * invdet;
-	float hi = -(i *f - d * c) * invdet;
-	float ci = (d * h - g * e) * invdet;
-	float fi = -(i * h - g * b) * invdet;
-	float ii = (i * e - d * b) * invdet;
-
-	float ox = ai * TX[0] + di * TY[0] + gi * TZ[0];
-	float oy = bi * TX[0] + ei * TY[0] + hi * TZ[0];
-	float oz = ci * TX[0] + fi * TY[0] + ii * TZ[0];
-	
-	float x = a * TX[0] + d * TY[0] + g * (TZ[0]+1);
-	float y = b * TX[0] + e * TY[0] + h * (TZ[0]+1);
-	float z = c * TX[0] + f * TY[0] + i * (TZ[0]+1);
-	
-
-
-	gluLookAt(TZ[0], TY[0], TX[0],
-		ox, oy, oz,
-		0.0f, 1.0f, 0.0f);*/
 	glm::quat orientation = glm::quat(QW[imageIndex], QX[imageIndex], QY[imageIndex], QZ[imageIndex]);
-	//glm::quat inverseOrientation = glm::quat(-QW[0], -QX[0], -QY[0], -QZ[0]);
-	//glm::quat inverseOrientation = glm::inverse(orientation);
-	//glm::mat3 RotationMatrix = glm::toMat3(inverseOrientation);
 	glm::mat3 RotationMatrix = glm::toMat3(orientation);
 	glm::mat3 Inverse = glm::inverse(RotationMatrix);
-	glm::mat3 Transpose = glm::transpose(Inverse);
 	glm::vec3 position = glm::vec3(TX[imageIndex], TY[imageIndex], TZ[imageIndex]);
 
 	glm::vec3 newPos = -Inverse * position;
@@ -291,33 +221,41 @@ void renderScene(void) {
 	glm::vec3 pUpVector = Inverse * defaultUpVector ;
 	glm::vec3 pLookAt = newPos + (Inverse* defaultForwardVector); 
 
-	/*glm::vec3 defaultUpVector=  glm::vec3(0, -1, 0);
-	glm::vec3 defaultForwardVector =  glm::vec3(0, 0, 1); 
-	
-	glm::vec3 pUpVector = defaultUpVector * orientation;
-	glm::vec3 pLookAt = newPos + (defaultForwardVector * orientation);*/
-
 	gluLookAt(newPos.x, newPos.y, newPos.z,
 		pLookAt.x, pLookAt.y, pLookAt.z,
 		pUpVector.x, pUpVector.y, pUpVector.z);
 		
-	//glm::mat4 model, view, projection;
-	//camera.Update();
-	//camera.GetMatricies(projection, view, model);
-
-	//glm::mat4 mvp = projection * view * model;	//Compute the mvp matrix
-	//glLoadMatrixf(glm::value_ptr(mvp));
-
-	drawPointCloud();
-
+	std::string name;
+	if (passIndex == 0) {
+		drawPointCloud();
+		name = "D:\\nerual\\output\\color\\" + names[imageIndex].substr(4, names[imageIndex].size() - 8) + "_color.png";
+	}
+	else {
+		drawPointCloudDepth(newPos);
+		name = "D:\\nerual\\output\\depth\\" + names[imageIndex].substr(4, names[imageIndex].size() - 8) + "_depth.png";
+	}
+	
 	glutSwapBuffers();
-	//const char* name = names[imageIndex].c_str();
-	std::string name = "D:\\nerual\\output\\" +  names[imageIndex].substr(4, names[imageIndex].size() - 8) + "_color.png";
+	
+
+	
+	
 	screenshot_png(name.c_str(), width, height, &pixels, &png_bytes, &png_rows);
 
-	if (imageIndex < set_size-1) {
-		imageIndex++;
+	if (loaded) {
+		if (imageIndex < set_size - 1) {
+			imageIndex++;
+		}
+		else if (passIndex == 0) {
+			passIndex = 1;
+			imageIndex = 0;
+		}
+		loaded = false;
 	}
+	else {
+		loaded = true;
+	}
+	
 	
 }
 
@@ -327,7 +265,7 @@ void renderScene(void) {
 int main(int argc, char** argv) {
 
 	loadImageTXT();
-	cout << names[0];
+	cout << names[imageIndex];
 	//load point cloud file
 	happly::PLYData plyIn("D:/nerual/fused.ply");
 	vPos = plyIn.getVertexPositions();
