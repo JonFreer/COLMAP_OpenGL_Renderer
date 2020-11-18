@@ -1,5 +1,4 @@
 #include <iostream>
-#include <chrono>
 #include <cmath>
 #include <glm/vec3.hpp> // glm::vec3
 #include <glm/vec4.hpp> // glm::vec4
@@ -28,30 +27,25 @@
 #endif
 using namespace std;
 
-int width = 1164;
-int height = 765;
-
+//Desnse Point Cloud Data
 std::vector<std::array<double, 3>> vPos;
 std::vector<std::array<unsigned char, 3>> vCol;
 
 static GLubyte* pixels = NULL;
 
 //Image Index
-int imageIndex = 1362;
-int passIndex = 0;
-int frameCount = 0;
+int imageIndex = 0;
+int passIndex = 0; //0 for color, 1 for depth
+int frameCount = 0; //work around to allow frame updates before saving
 
-bool loaded = false; //allow render to load for 1 iteration
-//Text Parser
+//variables
 const int set_size = 1363;
-//float QW[set_size];
-//float QX[set_size];
-//float QY[set_size];
-//float QZ[set_size];
-//float TX[set_size];
-//float TY[set_size];
-//float TZ[set_size];
-//string names[set_size];
+const string imagePath = "D:\\Downloads\\dense\\sparse\\images.txt";
+const string cameraPath = "D:\\Downloads\\dense\\sparse\\cameras.txt";
+const string plyPath = "D:/Downloads/fused_backup.ply";
+const string colorPath = "D:\\nerual\\output2\\color\\";
+const string depthPath = "D:\\nerual\\output2\\depth\\";
+const float depthThresh = 15;
 
 struct Image {
 	string name;
@@ -99,9 +93,6 @@ static void screenshot_png(const char* filename, unsigned int width, unsigned in
 	GLubyte** pixels, png_byte** png_bytes, png_byte*** png_rows) {
 	size_t i, nvals;
 	const size_t format_nchannels = 4;
-
-	
-	
 	err = fopen_s(&filepoint,filename, "wb");
 	nvals = format_nchannels * width * height;
 	*pixels = (GLubyte*)realloc(*pixels, nvals * sizeof(GLubyte));
@@ -141,8 +132,6 @@ static void screenshot_png_grey(const char* filename, unsigned int width, unsign
 	size_t i, nvals;
 	const size_t format_nchannels = 1;
 
-
-
 	err = fopen_s(&filepoint, filename, "wb");
 	nvals = format_nchannels * width * height;
 	*pixels = (GLubyte*)realloc(*pixels, nvals *4* sizeof(GLubyte));
@@ -178,52 +167,9 @@ static void screenshot_png_grey(const char* filename, unsigned int width, unsign
 	fclose(filepoint);
 }
 
-static void screenshot_png_grey_old(const char* filename, unsigned int width, unsigned int height,
-	GLubyte** pixels, png_byte** png_bytes, png_byte*** png_rows) {
-	size_t i, nvals;
-	const size_t format_nchannels = 1;
-	
-
-
-	err = fopen_s(&filepoint, filename, "wb");
-	nvals = width * height ;
-	*pixels = (GLubyte*)realloc(*pixels, nvals * 4 * sizeof(GLubyte));
-	*png_bytes = (png_byte*)realloc(*png_bytes, nvals * sizeof(png_byte));
-	*png_rows = (png_byte**)realloc(*png_rows, height * sizeof(png_byte*));
-	glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, *pixels);
-	
-	for (size_t j = 0; j < nvals; j++) {
-		(*png_bytes)[j] = (*pixels)[j*3];
-	}
-	for (i = 0; i < height; i++)
-		(*png_rows)[height - i - 1] = &(*png_bytes)[i * width * format_nchannels];
-	png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-	if (!png) abort();
-	png_infop info = png_create_info_struct(png);
-	if (!info) abort();
-	if (setjmp(png_jmpbuf(png))) abort();
-	png_init_io(png, filepoint);
-	png_set_IHDR(
-		png,
-		info,
-		width,
-		height,
-		8,
-		PNG_COLOR_TYPE_GRAY,
-		PNG_INTERLACE_NONE,
-		PNG_COMPRESSION_TYPE_DEFAULT,
-		PNG_FILTER_TYPE_DEFAULT
-	);
-	png_write_info(png, info);
-	png_write_image(png, *png_rows);
-	png_write_end(png, NULL);
-	png_destroy_write_struct(&png, &info);
-	fclose(filepoint);
-}
-
 void loadCameraTXT() {
 	ifstream inFile;
-	inFile.open("D:\\Downloads\\dense\\sparse\\cameras.txt");
+	inFile.open(cameraPath);
 
 	if (!inFile) {
 		cerr << "Unable to open file datafile.txt";
@@ -246,14 +192,12 @@ void loadCameraTXT() {
 		}
 	}
 
-
-
 }
 
 
 void loadImageTXT() {
 	ifstream inFile;
-	inFile.open("D:\\Downloads\\dense\\sparse\\images.txt");
+	inFile.open(imagePath);
 
 	if (!inFile) {
 		cerr << "Unable to open file datafile.txt";
@@ -299,8 +243,7 @@ void changeSize(int w, int h) {
 	// Set the viewport to be the entire window
 	glViewport(0, 0, w, h);
 	glutReshapeWindow(w, h);
-	//gluOrtho(0.0f, w, h, 0.0f, 0.0f, 1.0f);
-	//gluOrtho2D(0.0, 900.0, 0.0, 640.0);
+
 	// Set the correct perspective.
 	float temp = (h / 2) / cameras[images[imageIndex].cameraID].focalY;
 	float fov = 2*(atan(temp) * 180 / 3.1415);
@@ -330,7 +273,7 @@ void drawPointCloudDepth(glm::vec3 camPos) {
 	for (std::vector<std::array<double, 3>>::size_type i = 0; i != vPos.size(); i++) {
 		float distance = (float)glm::distance(camPos, glm::vec3(vPos[i][0], vPos[i][1], vPos[i][2]));
 
-		glColor3f((distance / 15), (distance / 15), (distance / 15));
+		glColor3f((distance / depthThresh), (distance / depthThresh), (distance / depthThresh));
 		glVertex3f(vPos[i][0], vPos[i][1], vPos[i][2]);
 	}
 	glEnd();
@@ -381,11 +324,11 @@ void renderScene(void) {
 	std::string name;
 	if (passIndex == 0) {
 		drawPointCloud();
-		name = "D:\\nerual\\output2\\color\\" + images[imageIndex].name.substr(0, images[imageIndex].name.size() - 4) + ".png";
+		name = colorPath + images[imageIndex].name.substr(0, images[imageIndex].name.size() - 4) + ".png";
 	}
 	else {
 		drawPointCloudDepth(newPos);
-		name = "D:\\nerual\\output2\\depth\\" + images[imageIndex].name.substr(0, images[imageIndex].name.size() - 4) + ".png";
+		name = depthPath + images[imageIndex].name.substr(0, images[imageIndex].name.size() - 4) + ".png";
 	}
 	
 	glutSwapBuffers();
@@ -415,33 +358,16 @@ void renderScene(void) {
 		frameCount++;
 	}
 
-	//if (loaded) {
-	//	if (imageIndex < set_size - 1) {
-	//		imageIndex++;
-	//	}
-	//	else if (passIndex == 0) {
-	//		passIndex = 1;
-	//		imageIndex = 0;
-	//	}
-	//	loaded = false;
-	//}
-	//else {
-	//	loaded = true;
-	//}
-	
 	
 }
-
-
 
 
 int main(int argc, char** argv) {
 
 	loadImageTXT();
 	loadCameraTXT();
-	//cout << names[imageIndex];
-	//load point cloud file
-	happly::PLYData plyIn("D:/Downloads/fused_backup.ply");
+
+	happly::PLYData plyIn(plyPath);
 	vPos = plyIn.getVertexPositions();
 	vCol = plyIn.getVertexColors();
 
@@ -452,27 +378,12 @@ int main(int argc, char** argv) {
 	glutInitWindowSize(100, 100);
 	glutCreateWindow("Fluid");
 
-
-	//glEnable(GL_MULTISAMPLE);
-
-	//camera.SetPosition(glm::vec3(0, 0, -1));
-	//camera.SetLookAt(glm::vec3(0, 0, 0));
-	//camera.SetClipping(.1, 1000);
-	//camera.SetFOV(45);
-
 	// register callbacks
 	glutDisplayFunc(renderScene);
 	//glutReshapeFunc(changeSize);
 	glutIdleFunc(renderScene);
 
 	glutIgnoreKeyRepeat(1);
-	//glutKeyboardFunc(processNormalKeys);
-	//glutSpecialFunc(pressKey);
-	//glutSpecialUpFunc(releaseKey);
-
-	//// here are the two new functions
-	//glutMouseFunc(mouseButton);
-	//glutMotionFunc(mouseMove);
 
 	// OpenGL init
 	glEnable(GL_DEPTH_TEST);
